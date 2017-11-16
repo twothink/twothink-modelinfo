@@ -10,6 +10,8 @@ namespace think\modelinfo;
 
 use think\Db;
 use think\Loader;
+use think\Request;
+
 /*
  * @title 模型解析类公共类
  * @Author: 苹果  593657688@qq.com <www.twothink.cn>
@@ -244,7 +246,7 @@ class Base{
             $arr = array_merge_recursive($arr,$value);
         }
         if(empty($data)){
-            $data = request()->param();
+            $data = Request::instance()->param();
         }
         $new_arr = [];
         foreach ($arr as $key=>$value){
