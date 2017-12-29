@@ -9,28 +9,18 @@
 
 namespace think\modelinfo;
 
+use think\Exception;
 /*
  * @title静态模型定义处理类
  * @Author: 艺品网络  82550565@qq.com <www.twothink.cn>
  */
 class Quiet extends Base
 {
-    public $replace_string = [['[DELETE]', '[EDIT]'], ['delete?ids=[id]', 'edit?id=[id]']]; //特殊字符串替换用于列表定义解析
-    protected $Queryobj;//实列化查询对象
-
-    /*
-     * @title 模型规则解析
-     * @$info 模型定义
-     * @param $returnmodel   true 是否返回当前模型信息
-     * @return obj
-     * @author 艺品网络 593657688@qq.com
-     */
-    public function info($info = false, $returnmodel = true)
+    protected $ZOriginal;//最初模型数据
+    // 初始化
+    public function info($modelinfo)
     {
-        if (!$info && !isset($this->info)) {
-            $this->error = '模型配置信息不存在';
-            return false;
-        }
+        $info = $this->ZOriginal = $modelinfo;
         $scene = $this->scene = $this->scene ?: request()->action();
         //当前操作模型信息
         if (isset($info[$scene]) && isset($info['default'])) {
@@ -38,48 +28,41 @@ class Quiet extends Base
         } elseif (isset($info['default'])) {
             $info = $info['default'];
         }
+        $this->Original[0] = $info;//原始模型
         //$pk
-        if ($info['pk']) {
+        if (isset($info['pk'])) {
             $this->pk = $info['pk'];
         }
-
-        $this->model[] = $info;
-        if ($returnmodel)
-            $this->info = $info;
         //replace_string
         if (empty($info['replace_string'])) {
-            $this->info['replace_string'] = $this->replace_string;
+            $info['replace_string'] = $this->replace_string;
         }
+        $info['name'] = !empty($info['name']) ? $info['name'] : request()->controller();
+        if (isset($info['url']) && $info['url'] !== false) {
+            $info['url'] = $info['url'] !== true ? url($info['url']) : request()->url();
+        }
+        $this->info = $info;
         //Button
         if (!empty($info['button'])) {
             $this->getButton($info['button']);
         }
-        $this->info['name'] = !empty($info['name']) ? $info['name'] : request()->controller();
-        if (isset($info['url']) && $info['url'] !== false) {
-            $this->info['url'] = $info['url'] !== true ? url($info['url']) : request()->url();
-        }
         return $this;
     }
-
     /*
      * @title 获取button组
      * @param $button 按钮规则
      * @Author: 苹果  593657688@qq.com <www.twothink.cn>
      */
-    public function getButton($button = false)
+    public function getButton($button = '')
     {
-        if (!$button) {
-            $button = isset($this->model[0]['button']) ? $this->model[0]['button'] : '';
-        }
-
-        if ($button) {
+        if (!empty($button)) {
             $param = request()->param();
             foreach ($button as $key => &$value) {
                 // 替换数据变量
                 $url = preg_replace_callback('/\[([a-z_]+)\]/', function ($match) use ($param) {
                     return isset($param[$match[1]]) ? $param[$match[1]] : '';
                 }, $value['url']);
-                $value['url'] = $url;//url($url);
+                $value['url'] = url($url,'',false);
             }
             $this->info['button'] = $button;
         }
@@ -93,8 +76,10 @@ class Quiet extends Base
      */
     public function getListField($list_grid = false)
     {
-        if (!$list_grid) {
-            $list_grid = $this->model[0]['list_grid'];
+        if (!$list_grid && isset($this->info['list_grid'])) {
+            $list_grid = $this->info['list_grid'];
+            //删除原规则
+            unset($this->info['list_grid']);
         }
         return parent::getListField($list_grid);
     }
@@ -105,7 +90,7 @@ class Quiet extends Base
      */
     public function getSearchList()
     {
-        $search_arr = isset($this->model[0]['search_list']) ? $this->model[0]['search_list'] : [];
+        $search_arr = isset($this->info['search_list']) ? $this->info['search_list'] : [];
         //value extra规则解析
         foreach ($search_arr as $key => &$value) {
             if (0 === strpos($value['value'], ':') || 0 === strpos($value['value'], '[')) {
@@ -128,7 +113,7 @@ class Quiet extends Base
     public function getSearchFixed($search_fixed = false)
     {
         if (!$search_fixed) {
-            $search_fixed = isset($this->model[0]['search_fixed']) ? $this->model[0]['search_fixed'] : [];
+            $search_fixed = isset($this->info['search_fixed']) ? $this->info['search_fixed'] : [];
         }
         $param = request()->param();
         //value规则解析

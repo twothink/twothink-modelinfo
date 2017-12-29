@@ -9,28 +9,23 @@
 /*
  * 实例化模型解析类
  */
-function modelinfo(){
-    return new \think\ModelInfo();
-}
+//function modelinfo(){
+//    return new \think\ModelInfo();
+//}
 /* 解析列表定义规则(非文档模型解析)
  * $replace [['[DELETE]','[EDIT]',['[LIST]'],'DELETE','EDIT','LIST']]
  */
 function intent_list_field($data, $grid,$replace = false){
+    //获取请求参数
+    $param = request()->param();
+    $data = array_merge($param,$data);
     // 获取当前字段数据
     foreach($grid['field'] as $field){
         $array  =   explode('|',$field);
-        $temp  =    $data[$array[0]];
+        $temp  =    isset($data[$array[0]])?$data[$array[0]]:'';
         // 函数支持
-        if(isset($array[1]) && preg_match('#(.*?)\((.*?)\)#',$array[1],$matches)){ //自定义参数模式
-            $matches[2] = str_replace(" ","<{@%$}>",$matches[2]);
-            // 替换数据变量
-            $param  =   preg_replace_callback('/\[([a-z_]+)\]/', function($match) use($data){return $data[$match[1]];}, $matches[2]);
-            $param_arr = explode('<{@%$}>',$param);
-            if(in_array('[DATA]',$param_arr)){
-                $arr_key = array_search('[DATA]',$param_arr);
-                $param_arr[$arr_key] = $data;
-            } ;
-            $temp = call_user_func_array($matches[1], $param_arr);
+        if(isset($array[1]) && preg_match('/(.*?)\((.*)\)/',$array[1],$matches)){ //自定义参数模式
+            $temp = parseFunctionString($matches,$array[1],$data);
         }elseif(isset($array[1]) && preg_match('#\{(.*?)\}#',$array[1],$matches)){
             $switch_arr = explode(' ',$matches[1]);
             foreach ($switch_arr as $value){
@@ -71,18 +66,18 @@ function intent_list_field($data, $grid,$replace = false){
                 // 替换系统特殊字符串
                 $href   = isset($arr[$data_val][2]) ? str_replace($replace['0'],$replace['1'],$arr[$data_val][2]):'';
                 // 替换数据变量
-                $href   = preg_replace_callback('/\[([a-z_]+)\]/', function($match) use($data){return $data[$match[1]];},$href);
+                $href   = preg_replace_callback('/\[([a-z_]+)\]/', function($match) use($data){return isset($data[$match[1]])?$data[$match[1]]:'';},$href);
                 $val[]  =   '<a href="'.url($href).'">'.$show.'</a>';
             }elseif(preg_match('/^\[([a-z_]+)\]$/',$href,$matches)){ //直接显示内容
                 $val[]  =   $data2[$matches[1]];
-            }elseif(preg_match('#\[function\@(.*?)\]#',$href,$matches)){ //函数支持
-                $val[] = call_user_func($matches[1], $data);
+            }elseif(preg_match('/(.*?)\((.*)\)/',$href,$matches)){ //函数支持
+                $val[] = parseFunctionString($matches,$href,$data);
             }else{
                 $show   =   isset($array[1])?$array[1]:$value;
                 // 替换系统特殊字符串
-                $href   =   str_replace($replace['0'],$replace['1'],$href);
+                $href   =  $replace?str_replace($replace['0'],$replace['1'],$href):$href;
                 // 替换数据变量
-                $href   =   preg_replace_callback('/\[([a-z_]+)\]/', function($match) use($data){return $data[$match[1]];}, $href);
+                $href   =   preg_replace_callback('/\[([a-z_]+)\]/', function($match) use($data){return isset($data[$match[1]])?$data[$match[1]]:'';}, $href);
                 $val[]  =   '<a href="'.url($href).'">'.$show.'</a>';
             }
         }
@@ -90,7 +85,24 @@ function intent_list_field($data, $grid,$replace = false){
     }
     return $value;
 }
-
+/*
+ * 字符串 函数解析
+ * $matches
+ * $str //原始字符串
+ * $data 数据集
+ */
+function parseFunctionString($matches,$str,$data){
+    if(empty($matches[2]))
+        return   eval('return '.$str.';');
+    $matches[2] = str_replace("<D>",",",$matches[2]);
+    $matches[2] = str_replace("<M>",":",$matches[2]);
+    //参数解析
+    $matches[2] = '['.$matches[2].']';
+    eval("\$matches[2]  = ".$matches[2] .'; ');
+    // 替换数据变量
+    $param_arr = parse_field_attr_param($matches[2],$data);
+    return call_user_func_array($matches[1], $param_arr);
+}
 /* 替换数据变量
  * $array 处理数组
  * $param $data
@@ -126,7 +138,6 @@ function parse_config_attr($string) {
 }
 
 /* 分析枚举类型字段值 格式 a:名称1,b:名称2
- * 暂时和 parse_config_attr功能相同
  * 但请不要互相使用，后期会调整
  * @$string 格式规则
  * @$data   数据集
@@ -148,15 +159,7 @@ function parse_field_attr($string,$data=false,$value='') {
         }
         //自定义函数
         if(preg_match('/(.*?)\((.*)\)/',$str,$matches)){
-            if(empty($matches[2]))
-                return   eval('return '.$str.';');
-            //参数解析
-            $matches[2] = '['.$matches[2].']';
-            eval("\$matches[2]  = ".$matches[2] .'; ');
-            // 替换数据变量
-            $param_arr = parse_field_attr_param($matches[2],$data);
-            $stmp = call_user_func_array($matches[1], $param_arr);
-            return $stmp;
+            return parseFunctionString($matches,$str,$data);
         }
     }elseif(0 === strpos($string,'[')){
         // 支持读取配置参数（必须是数组类型）

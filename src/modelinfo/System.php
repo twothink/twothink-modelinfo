@@ -8,37 +8,35 @@
 // +----------------------------------------------------------------------
 namespace think\modelinfo;
 
+use think\Exception;
 /*
  * @title 系统(动态)模型处理类用与后台系统模型的处理 非静态模型
  * @Author: 苹果  593657688@qq.com <www.twothink.cn>
  */
 class System extends Base {
-    private $type;//模型类型 1:单线模型往上级查找列表定义 2:绑定多个模型获取基础模型的列表定义(即分支模型V形模型)
-
-    public function __construct($data = ['type'=>1])
-    {
-         foreach ($data as $key=>$value){
-             $this->$key = $value;
-         }
-    }
+    private $type = 1;//模型类型 1:单线模型往上级查找列表定义 2:绑定多个模型获取基础模型的列表定义(即分支模型V形模型)
+    private $isParent = true; // 是否查询父级
     /*
-     * @title 获取当前模型信息
-     * @param $model_id 模型ID
-     * @param $returnmodel   true 是否返回当前模型信息
-     * @param $status true 是否查询父级模型
+     * @title 获取当前模型信息初始化
      * @Author: 苹果  593657688@qq.com <www.twothink.cn>
      */
-    public function info($model_id,$returnmodel=false,$status=true){
-        if($status){
+    public function info($model_id){
+        if($this->isParent){
             $model_list = $this->get_parent_model($model_id);
         }else{
-            $model_list[] =  db('Model')->getById($model_id);
+            if(!$model = db('Model')->getById($model_id)){
+                 throw new Exception("模型id:{$model_id}不存在");
+            }
+            $model_list[] =  $model;
         }
-        $this->model = $model_list;
-        if($returnmodel){
-            $model_list = Array_mapping($model_list,'id');
-            $this->info = $model_list[$model_id];
-        }
+        $this->Original = $model_list;
+
+        $model_list = Array_mapping($model_list, 'id');
+        $modelinfo  = $model_list[$model_id];
+        //系统模型默认参数配置
+        $modelinfo['url'] = request()->url();
+        $this->info       = $modelinfo;
+
         return $this;
     }
     /*
@@ -53,6 +51,9 @@ class System extends Base {
         }
         $cates  =   db('Model')->where('status','eq',1)->select();
         $child  =   db('Model')->getById($cid);//获取参数模型的信息
+        if(!$child){
+            throw new Exception("模型id:{$cid}不存在");
+        }
         $pid    =   $child['extend'];
         $temp   =   array();
         $res[]  =   $child;
@@ -78,7 +79,7 @@ class System extends Base {
      */
     public function getListField($list_grid=false){
         if(!$list_grid){
-            $model_list = $this->model;
+            $model_list = $this->Original;
             switch ($this->type){
                 case 1:
                     rsort($model_list);
@@ -103,7 +104,7 @@ class System extends Base {
      * @Author: 苹果  593657688@qq.com <www.twothink.cn>
      */
     public function getSearchList(){
-        $model_list = $this->model;
+        $model_list = $this->Original;
         switch ($this->type){
             case 1:
                 rsort($model_list);
@@ -142,7 +143,7 @@ class System extends Base {
      * @Author: 苹果  593657688@qq.com <www.twothink.cn>
      */
     public function getSearchFixed(){
-        $model_list = $this->model;
+        $model_list = $this->Original;
         switch ($this->type){
             case 1:
                 rsort($model_list);
@@ -187,7 +188,7 @@ class System extends Base {
      */
     public function getFields($model_id = false){
         if(!$model_id){
-            $model_list = $this->model;
+            $model_list = $this->Original;
             rsort($model_list);
             $model_id = $model_list[0]['id'];
         }
